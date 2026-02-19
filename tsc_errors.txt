@@ -1,0 +1,4 @@
+src/controllers/chat.controller.ts(55,53): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/middleware/validate.middleware.ts(12,31): error TS2339: Property 'errors' does not exist on type 'ZodError<unknown>'.
+src/middleware/validate.middleware.ts(12,42): error TS7006: Parameter 'e' implicitly has an 'any' type.
