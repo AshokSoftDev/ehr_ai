@@ -3,70 +3,96 @@ import { z } from 'zod';
 import { createApiClient, getApiErrorMessage } from '../utils/api-client';
 import { getCurrentToken } from '../utils/token-context';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 function getToken(): string {
   const token = getCurrentToken();
   if (!token) throw new Error('Authentication required');
   return token;
 }
 
-export const getDailySummaryTool = new DynamicStructuredTool({
-  name: 'get_daily_summary',
+export const getDashboardMetricsTool = new DynamicStructuredTool({
+  name: 'get_dashboard_metrics',
   description:
-    'Get a daily clinic summary including appointment counts, visit status breakdown. ' +
-    'Use for questions like "how is today going?", "clinic summary", "daily overview".',
+    'Get top KPI metrics for a specific date (appointments count, total revenue, patients registered). ' +
+    'Use for questions like "what is our revenue today?", "how many patients today?", "daily overview".',
   schema: z.object({
-    date: z.string().optional().describe('Date for summary (YYYY-MM-DD), defaults to today'),
+    date: z.string().optional().describe('Date for metrics (YYYY-MM-DD), defaults to today'),
   }),
-  func: async (input: any) => {
+  func: async (input) => {
     try {
-      const token = getToken();
-      const api = createApiClient(token);
+      const api = createApiClient(getToken());
       const targetDate = input.date || new Date().toISOString().split('T')[0];
-
-      const [appointmentsRes, statusCountsRes] = await Promise.allSettled([
-        api.get('/appointments', {
-          params: { dateFrom: targetDate, dateTo: targetDate, limit: 100 },
-        }),
-        api.get('/visits/status-counts', {
-          params: { date: targetDate },
-        }),
-      ]);
-
-      let appointmentData = { total: 0, appointments: [] as any[] };
-      if (appointmentsRes.status === 'fulfilled') {
-        const d = appointmentsRes.value.data?.data || appointmentsRes.value.data;
-        appointmentData = {
-          total: d.total || 0,
-          appointments: d.appointments || [],
-        };
-      }
-
-      let statusCounts = {};
-      if (statusCountsRes.status === 'fulfilled') {
-        statusCounts = statusCountsRes.value.data?.data || statusCountsRes.value.data || {};
-      }
-
-      const statusBreakdown: Record<string, number> = {};
-      appointmentData.appointments.forEach((a: any) => {
-        const st = (a.appointment_status as string) || 'UNKNOWN';
-        statusBreakdown[st] = (statusBreakdown[st] || 0) + 1;
-      });
-
-      return JSON.stringify({
-        success: true,
-        date: targetDate,
-        summary: {
-          totalAppointments: appointmentData.total,
-          appointmentsByStatus: statusBreakdown,
-          visitStatusCounts: statusCounts,
-        },
-      });
+      const res = await api.get('/dashboard/metrics', { params: { date: targetDate } });
+      return JSON.stringify(res.data);
     } catch (error) {
       return JSON.stringify({ error: getApiErrorMessage(error) });
     }
   },
 });
 
-export const dashboardTools = [getDailySummaryTool];
+export const getDashboardPipelineTool = new DynamicStructuredTool({
+  name: 'get_dashboard_pipeline',
+  description:
+    'Get the current real-time patient flow pipeline for today (booked, checked-in, with doctor, payment pending, completed).',
+  schema: z.object({
+    date: z.string().optional().describe('Date for pipeline (YYYY-MM-DD), defaults to today'),
+  }),
+  func: async (input) => {
+    try {
+      const api = createApiClient(getToken());
+      const targetDate = input.date || new Date().toISOString().split('T')[0];
+      const res = await api.get('/dashboard/pipeline', { params: { date: targetDate } });
+      return JSON.stringify(res.data);
+    } catch (error) {
+      return JSON.stringify({ error: getApiErrorMessage(error) });
+    }
+  },
+});
+
+export const getDashboardScheduleTool = new DynamicStructuredTool({
+  name: 'get_dashboard_schedule',
+  description:
+    'Get today\'s upcoming appointments schedule (timeline). Shows patient name, doctor, time, and status.',
+  schema: z.object({
+    date: z.string().optional().describe('Date for schedule (YYYY-MM-DD), defaults to today'),
+    limit: z.number().optional().describe('Max number of appointments to return, defaults to 10'),
+  }),
+  func: async (input) => {
+    try {
+      const api = createApiClient(getToken());
+      const targetDate = input.date || new Date().toISOString().split('T')[0];
+      const res = await api.get('/dashboard/schedule', { 
+        params: { date: targetDate, limit: input.limit || 10 } 
+      });
+      return JSON.stringify(res.data);
+    } catch (error) {
+      return JSON.stringify({ error: getApiErrorMessage(error) });
+    }
+  },
+});
+
+export const getDashboardRevenueTrendTool = new DynamicStructuredTool({
+  name: 'get_dashboard_revenue_trend',
+  description:
+    'Get the revenue trend (billed vs collected) over the past N days. Used for financial reporting charts.',
+  schema: z.object({
+    days: z.number().optional().describe('Number of days to look back, defaults to 7'),
+  }),
+  func: async (input) => {
+    try {
+      const api = createApiClient(getToken());
+      const res = await api.get('/dashboard/revenue-trend', { 
+        params: { days: input.days || 7 } 
+      });
+      return JSON.stringify(res.data);
+    } catch (error) {
+      return JSON.stringify({ error: getApiErrorMessage(error) });
+    }
+  },
+});
+
+export const dashboardTools = [
+  getDashboardMetricsTool,
+  getDashboardPipelineTool,
+  getDashboardScheduleTool,
+  getDashboardRevenueTrendTool,
+];

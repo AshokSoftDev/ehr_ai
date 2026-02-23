@@ -12,6 +12,7 @@ import { visitTools } from './visit.tool';
 import { prescriptionTools } from './prescription.tool';
 import { billingTools } from './billing.tool';
 import { dashboardTools } from './dashboard.tool';
+import { patientContextTools } from './patient-context.tool';
 
 // Combine all tools
 export const allTools = [
@@ -22,6 +23,7 @@ export const allTools = [
   ...prescriptionTools,
   ...billingTools,
   ...dashboardTools,
+  ...patientContextTools,
 ];
 
 // Export individual tool groups for selective use
@@ -33,4 +35,5 @@ export {
   prescriptionTools,
   billingTools,
   dashboardTools,
+  patientContextTools,
 };

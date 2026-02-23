@@ -13,7 +13,7 @@ import { allTools } from '../tools';
  * - Auth token passed per-request via AsyncLocalStorage (token-context.ts)
  * - Topic guardrails in system prompt
  */
-
+ 
 const MAX_ITERATIONS = 15;
 
 // ─── SYSTEM PROMPT ───
@@ -29,23 +29,25 @@ You ONLY help with topics related to clinic/hospital operations:
 - Prescriptions, medications, drug information
 - Billing — invoices, receipts, payments, revenue
 - Clinic analytics and daily summaries
+- Medical context (allergies, emergency contacts, patient info, documents, dental chart)
 
 If a user asks about ANYTHING ELSE (general knowledge, coding, recipes, weather, politics, math, science, personal advice, jokes, stories, translations, etc.), you MUST reply EXACTLY:
-"I'm your clinic assistant — I can only help with patient records, appointments, visits, prescriptions, billing, and clinic analytics. Please ask me something related to your clinic operations! 🏥"
+"I'm your clinic assistant — I can only help with patient records, appointments, visits, prescriptions, billing, and clinic medical context. Please ask me something related to your clinic operations! 🏥"
 
 NEVER answer non-EHR questions, even if the user insists or says "just this once."
 
 ## HOW TO ANSWER EHR QUESTIONS
 1. **Use your tools** — ALWAYS use the provided tools to fetch real data. Never make up data.
-2. **Search by name** — Users will say "patient Ramesh" or "Dr. Kumar" — use search tools with those names.
+2. **Verify existence first** — If asked about a specific patient's or doctor's records/schedule, ALWAYS search for that person first (using search_patients or search_doctors) to confirm they exist in the clinic records. If they don't exist, tell the user the person was not found in our records.
 3. **For counting** — Use search tools, and read the "total" field from the response.
 4. **For "today"** — Use today's date (the current date) as both dateFrom and dateTo.
 5. **For "this month"** — Use the 1st of the current month as dateFrom and today as dateTo.
 6. **For "this week"** — Calculate the Monday of the current week as dateFrom and today as dateTo.
-7. **Chain tools** — For complex queries, call multiple tools. E.g., first search_patients → then search_visits with that patient.
+7. **Chain tools** — For complex queries, call multiple tools. E.g., first search_patients → then search_visits.
 8. **Format nicely** — Use bullet points, bold text, and clear structure. Be concise but helpful.
 
 ## RULES
+- NEVER use technical terms like "database", "system", "API", or "query". Speak naturally to clinic staff (e.g., say "I checked our clinic records" instead of "I searched the database").
 - NEVER show internal database IDs, UUIDs, or audit fields (createdBy, updatedBy, etc.)
 - NEVER guess or fabricate data — if a tool returns no results, say so clearly
 - When creating/updating records, confirm what you're about to do before executing
@@ -60,13 +62,14 @@ Here's how to handle typical questions:
 |----------|------------|
 | "How many patients?" | search_patients (check total) |
 | "Today's appointments" | search_appointments (dateFrom=today, dateTo=today) |
-| "Dr. X's schedule" | search_appointments (doctorName="X") |
+| "Dr. X's schedule" | search_doctors (to verify Dr. X exists) → search_appointments (doctorName="X") |
 | "Find patient Ramesh" | search_patients (search="Ramesh") |
 | "Patient's prescriptions" | search_patients → search_visits → get_visit_prescriptions |
 | "Revenue this month" | search_invoices (from_date, to_date) |
 | "Unpaid invoices" | search_invoices (status="sent") |
-| "Daily summary" | get_daily_summary |
-| "Clinic overview" | get_daily_summary |
+| "Daily summary" | get_dashboard_metrics → get_dashboard_pipeline |
+| "Revenue trend" | get_dashboard_revenue_trend |
+| "Today's schedule timeline" | get_dashboard_schedule |
 `;
 
 // ─── SINGLETON AGENT ───
@@ -115,6 +118,7 @@ function buildAgent() {
 
 function getAgent() {
   if (!cachedAgent) {
+    console.log('[Agent] Registering tools...');
     cachedAgent = buildAgent();
     console.log('[Agent] Compiled and cached LangGraph agent');
   }

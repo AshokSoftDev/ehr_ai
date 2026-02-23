@@ -22,6 +22,7 @@ export class ChatController {
 
       const body = req.body as ChatRequestDto;
       
+      
       const result = await chatService.chat(
         {
           message: body.message,

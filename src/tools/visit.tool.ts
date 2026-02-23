@@ -82,4 +82,67 @@ export const getVisitStatusCountsTool = new DynamicStructuredTool({
   },
 });
 
-export const visitTools = [searchVisitsTool, getVisitStatusCountsTool];
+export const getVisitClinicalNotesTool = new DynamicStructuredTool({
+  name: 'get_visit_clinical_notes',
+  description:
+    'Get clinical notes for a specific visit, including vitals, chief complaints, observations, diagnoses, and custom notes.',
+  schema: z.object({
+    visitId: z.number().describe('The numeric visit ID'),
+  }),
+  func: async (input: any) => {
+    try {
+      const token = getToken();
+      const api = createApiClient(token);
+      const response = await api.get(`/visits/${input.visitId}/clinical-notes`);
+      return JSON.stringify({ success: true, clinicalNotes: response.data || response.data?.data });
+    } catch (error) {
+      return JSON.stringify({ error: getApiErrorMessage(error) });
+    }
+  },
+});
+
+export const getVisitDocumentsTool = new DynamicStructuredTool({
+  name: 'get_visit_documents',
+  description:
+    'Get medical documents (lab reports, scans, etc.) uploaded for a specific visit.',
+  schema: z.object({
+    visitId: z.number().describe('The numeric visit ID'),
+  }),
+  func: async (input: any) => {
+    try {
+      const token = getToken();
+      const api = createApiClient(token);
+      const response = await api.get(`/visits/${input.visitId}/documents`);
+      return JSON.stringify({ success: true, documents: response.data || response.data?.data });
+    } catch (error) {
+      return JSON.stringify({ error: getApiErrorMessage(error) });
+    }
+  },
+});
+
+export const getVisitDentalHpiTool = new DynamicStructuredTool({
+  name: 'get_visit_dental_hpi',
+  description:
+    'Get the Dental History of Present Illness (HPI) records for a visit, including tooth numbers, surfaces, complaints, and severity.',
+  schema: z.object({
+    visitId: z.number().describe('The numeric visit ID'),
+  }),
+  func: async (input: any) => {
+    try {
+      const token = getToken();
+      const api = createApiClient(token);
+      const response = await api.get(`/visits/${input.visitId}/dental-hpi`);
+      return JSON.stringify({ success: true, dentalHpi: response.data || response.data?.data });
+    } catch (error) {
+      return JSON.stringify({ error: getApiErrorMessage(error) });
+    }
+  },
+});
+
+export const visitTools = [
+  searchVisitsTool,
+  getVisitStatusCountsTool,
+  getVisitClinicalNotesTool,
+  getVisitDocumentsTool,
+  getVisitDentalHpiTool,
+];
