@@ -1,7 +1,7 @@
 import { processMessage } from '../agent/agent';
 import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
-import { prisma } from '../utils/prisma';
 import { runWithToken } from '../utils/token-context';
+import axios from 'axios';
 
 // In-memory conversation store (for production, use Redis or database)
 const conversationStore = new Map<string, BaseMessage[]>();
@@ -50,7 +50,7 @@ export class ChatService {
     const history = conversationStore.get(convId) || [];
 
     // Check RBAC permissions
-    await this.checkPermissions(user);
+    await this.checkPermissions(user, token);
 
     // Add context to message
     const contextualMessage = this.addContext(message, user);
@@ -139,40 +139,27 @@ export class ChatService {
   }
 
   /**
-   * Check RBAC permissions
+   * Check RBAC permissions using the main Node API
    */
-  private async checkPermissions(user: UserContext): Promise<void> {
+  private async checkPermissions(user: UserContext, token: string): Promise<void> {
     // Root users have all permissions
     if (user.accountType === 'root' || !user.groupId) {
       return;
     }
 
     try {
-      const module = await prisma.module.findFirst({
-        where: { name: 'AI Chat' },
-        select: { id: true },
+      const response = await axios.get(`${process.env.EHR_API_URL || 'http://localhost:5000/api/v1'}/modules/ai-chat/access`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-
-      if (module) {
-        const permission = await prisma.groupModulePermission.findUnique({
-          where: {
-            groupId_moduleId: {
-              groupId: user.groupId,
-              moduleId: module.id,
-            },
-          },
-          select: { hasAccess: true },
-        });
-
-        if (!permission?.hasAccess) {
-          throw new Error('You do not have permission to use the AI Chat feature');
-        }
+      
+      if (!response.data?.success || !response.data?.hasAccess) {
+         throw new Error('You do not have permission to use the AI Chat feature');
       }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('permission')) {
-        throw error;
+    } catch (error: any) {
+      if (error?.response?.status === 403 || error.message.includes('permission')) {
+        throw new Error('You do not have permission to use the AI Chat feature');
       }
-      console.warn('[ChatService] AI Chat module not found, allowing access');
+      console.warn('[ChatService] Error checking AI Chat permissions, allowing access contextually', error.message);
     }
   }
 

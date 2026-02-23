@@ -25,7 +25,6 @@
     "@langchain/langgraph": "^1.1.5",
     "@langchain/langgraph-checkpoint": "^1.0.0",
     "@langchain/openai": "^1.2.9",
-    "@prisma/client": "^6.15.0",
     "axios": "^1.7.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -35,9 +34,6 @@
     "pg": "^8.13.0",
     "zod": "^4.2.1"
   },
-  "prisma": {
-    "schema": "prisma/schema.prisma"
-  },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
@@ -46,7 +42,6 @@
     "@types/pg": "^8.11.0",
     "chalk": "^5.4.0",
     "nodemon": "^3.1.10",
-    "prisma": "^6.15.0",
     "rimraf": "^6.1.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
