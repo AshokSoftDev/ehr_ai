@@ -1,76 +1,85 @@
-import { DynamicTool } from '@langchain/core/tools';
+import { DynamicStructuredTool } from '@langchain/core/tools';
+import { z } from 'zod';
 import { createApiClient, getApiErrorMessage } from '../utils/api-client';
-import { getAuthToken } from './patient.tool';
+import { getCurrentToken } from '../utils/token-context';
 
-/**
- * Visit Tools - Only CREATE, UPDATE, DELETE operations via EHR API
- * For reading/searching, use the queryDatabaseTool instead
- */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-// Create visit
-export const createVisitTool = new DynamicTool({
-  name: 'create_visit',
-  description: 'Create a new visit record. Input should be a JSON object with: patient_id (number), doctor_id (string), visit_date (ISO date), visit_type (string). Optional: appointment_id, reason_for_visit, location_id.',
-  func: async (input: string) => {
+function getToken(): string {
+  const token = getCurrentToken();
+  if (!token) throw new Error('Authentication required');
+  return token;
+}
+
+// ─── READ TOOLS ───
+
+export const searchVisitsTool = new DynamicStructuredTool({
+  name: 'search_visits',
+  description:
+    'Search visits with filters. Use for questions like "patient visits", "visits today". ' +
+    'Returns paginated list with total count.',
+  schema: z.object({
+    dateFrom: z.string().optional().describe('Start date (YYYY-MM-DD)'),
+    dateTo: z.string().optional().describe('End date (YYYY-MM-DD)'),
+    doctor: z.string().optional().describe('Filter by doctor name or specialty'),
+    patient: z.string().optional().describe('Filter by patient name or MRN'),
+    status: z.string().optional().describe('Filter by appointment status'),
+    page: z.number().optional().describe('Page number (default 1)'),
+    limit: z.number().optional().describe('Results per page, max 100 (default 20)'),
+  }),
+  func: async (input: any) => {
     try {
-      const token = getAuthToken();
-      if (!token) return JSON.stringify({ error: 'Authentication required' });
-
-      const visitData = JSON.parse(input || '{}');
+      const token = getToken();
       const api = createApiClient(token);
-      const response = await api.post('/visits', visitData);
-      return JSON.stringify({ success: true, data: response.data, message: 'Visit created successfully' });
+      const params: Record<string, unknown> = {};
+      if (input.dateFrom) params.dateFrom = input.dateFrom;
+      if (input.dateTo) params.dateTo = input.dateTo;
+      if (input.doctor) params.doctor = input.doctor;
+      if (input.patient) params.patient = input.patient;
+      if (input.status) params.status = input.status;
+      params.page = input.page || 1;
+      params.limit = Math.min(input.limit || 20, 100);
+
+      const response = await api.get('/visits', { params });
+      const data = response.data?.data || response.data;
+      return JSON.stringify({
+        success: true,
+        total: data.total || 0,
+        page: data.page || 1,
+        totalPages: data.totalPages || 1,
+        visits: data.visits || [],
+      });
     } catch (error) {
       return JSON.stringify({ error: getApiErrorMessage(error) });
     }
   },
 });
 
-// Update visit
-export const updateVisitTool = new DynamicTool({
-  name: 'update_visit',
-  description: 'Update an existing visit record. Input should be a JSON object with visitId and fields to update.',
-  func: async (input: string) => {
+export const getVisitStatusCountsTool = new DynamicStructuredTool({
+  name: 'get_visit_status_counts',
+  description:
+    'Get visit status counts for a specific date and/or doctor. ' +
+    'Returns counts grouped by status (booked, checked-in, with doctor, checked-out). ' +
+    'Useful for dashboard-style summaries.',
+  schema: z.object({
+    date: z.string().optional().describe('Date (YYYY-MM-DD), defaults to today'),
+    doctorId: z.string().optional().describe('Filter by doctor ID'),
+  }),
+  func: async (input: any) => {
     try {
-      const token = getAuthToken();
-      if (!token) return JSON.stringify({ error: 'Authentication required' });
-
-      const params = JSON.parse(input || '{}');
-      if (!params.visitId) return JSON.stringify({ error: 'visitId is required' });
-      
-      const { visitId, ...updateData } = params;
+      const token = getToken();
       const api = createApiClient(token);
-      const response = await api.put(`/visits/${visitId}`, updateData);
-      return JSON.stringify({ success: true, data: response.data, message: 'Visit updated successfully' });
+      const params: Record<string, string> = {};
+      if (input.date) params.date = input.date;
+      if (input.doctorId) params.doctorId = input.doctorId;
+
+      const response = await api.get('/visits/status-counts', { params });
+      const data = response.data?.data || response.data;
+      return JSON.stringify({ success: true, statusCounts: data });
     } catch (error) {
       return JSON.stringify({ error: getApiErrorMessage(error) });
     }
   },
 });
 
-// Soft delete visit
-export const deleteVisitTool = new DynamicTool({
-  name: 'delete_visit',
-  description: 'Soft delete a visit record. Input should be a JSON object with visitId (number).',
-  func: async (input: string) => {
-    try {
-      const token = getAuthToken();
-      if (!token) return JSON.stringify({ error: 'Authentication required' });
-
-      const params = JSON.parse(input || '{}');
-      if (!params.visitId) return JSON.stringify({ error: 'visitId is required' });
-      
-      const api = createApiClient(token);
-      const response = await api.delete(`/visits/${params.visitId}`);
-      return JSON.stringify({ success: true, data: response.data, message: 'Visit deleted successfully' });
-    } catch (error) {
-      return JSON.stringify({ error: getApiErrorMessage(error) });
-    }
-  },
-});
-
-export const visitTools = [
-  createVisitTool,
-  updateVisitTool,
-  deleteVisitTool,
-];
+export const visitTools = [searchVisitsTool, getVisitStatusCountsTool];

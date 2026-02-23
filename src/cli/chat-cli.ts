@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import axios from 'axios';
-import { processMessage, HumanMessage, AIMessage, initializeAgent } from '../agent/agent';
-import { BaseMessage } from '@langchain/core/messages';
+import { processMessage } from '../agent/agent';
+import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 
 // ANSI color codes
 const colors = {
@@ -50,7 +50,6 @@ class ChatCLI {
     this.print(`${c.dim}Commands:${c.reset}`);
     this.print(`  ${c.cyan}/login <email> <password>${c.reset} - Login to get auth token`);
     this.print(`  ${c.cyan}/clear${c.reset}                   - Clear conversation history`);
-    this.print(`  ${c.cyan}/schema${c.reset}                  - Show database tables`);
     this.print(`  ${c.cyan}/help${c.reset}                    - Show available commands`);
     this.print(`  ${c.cyan}/exit${c.reset}                    - Exit the chat`);
     this.print('');
@@ -80,11 +79,11 @@ class ChatCLI {
 
   private async login(email: string, password: string): Promise<boolean> {
     try {
-      this.printInfo('Logging in... ' + email + ' ' + password + ' ' + this.apiBaseUrl);
+      this.printInfo('Logging in... ' + email);
       const response = await axios.post(`${this.apiBaseUrl}/users/login`, {
         email,
         password,
-      }).then((data)=>{
+      }).then((data) => {
         return data.data;
       });
 
@@ -171,30 +170,20 @@ class ChatCLI {
         this.printSuccess('Conversation history cleared');
         break;
 
-      case '/schema':
-        if (!this.token) {
-          this.printError('Please login first');
-          return;
-        }
-        this.printInfo('Fetching database schema...');
-        await this.processInput('List all the tables in the database');
-        break;
-
       case '/help':
         this.print('');
         this.print(`${c.bright}Available Commands:${c.reset}`);
         this.print(`  ${c.cyan}/login <email> <password>${c.reset} - Login to the EHR system`);
         this.print(`  ${c.cyan}/clear${c.reset}                   - Clear conversation history`);
-        this.print(`  ${c.cyan}/schema${c.reset}                  - Show database tables`);
         this.print(`  ${c.cyan}/help${c.reset}                    - Show this help message`);
         this.print(`  ${c.cyan}/exit${c.reset}                    - Exit the chat`);
         this.print('');
         this.print(`${c.bright}Example Queries:${c.reset}`);
         this.print(`  ${c.dim}"Show me today's appointments"${c.reset}`);
         this.print(`  ${c.dim}"Find patient with MRN P001"${c.reset}`);
-        this.print(`  ${c.dim}"Create an appointment for patient 5 with doctor [id] tomorrow at 10am"${c.reset}`);
+        this.print(`  ${c.dim}"How many patients registered this month?"${c.reset}`);
         this.print(`  ${c.dim}"List all doctors"${c.reset}`);
-        this.print(`  ${c.dim}"Show prescriptions for visit 12"${c.reset}`);
+        this.print(`  ${c.dim}"Revenue this month"${c.reset}`);
         this.print('');
         break;
 
@@ -219,14 +208,7 @@ class ChatCLI {
       this.print('');
     }
 
-    // Initialize agent and load schema
-    this.printInfo('Loading database schema...');
-    try {
-      await initializeAgent();
-      this.printSuccess('Schema loaded successfully');
-    } catch (error) {
-      this.printError('Failed to load schema - queries may not work correctly');
-    }
+    this.printSuccess('Agent ready — no schema loading needed');
 
     const prompt = () => {
       this.rl.question(`${c.magenta}> ${c.reset}`, async (input) => {

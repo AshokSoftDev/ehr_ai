@@ -1,9 +1,15 @@
-import { processMessage, HumanMessage, AIMessage } from '../agent/agent';
-import { BaseMessage } from '@langchain/core/messages';
+import { processMessage } from '../agent/agent';
+import { HumanMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 import { prisma } from '../utils/prisma';
+import { runWithToken } from '../utils/token-context';
 
 // In-memory conversation store (for production, use Redis or database)
 const conversationStore = new Map<string, BaseMessage[]>();
+
+// Simple rate limiter per user
+const rateLimiter = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 30; // messages per minute
+const RATE_WINDOW = 60 * 1000; // 1 minute
 
 export interface ChatRequest {
   message: string;
@@ -33,37 +39,43 @@ export class ChatService {
    */
   async chat(request: ChatRequest, token: string, user: UserContext): Promise<ChatResponse> {
     const { message, conversationId } = request;
-    
+
+    // Rate limiting check
+    this.checkRateLimit(user.userId);
+
     // Get or create conversation ID
     const convId = conversationId || this.generateConversationId();
-    
+
     // Get conversation history
     const history = conversationStore.get(convId) || [];
-    
+
     // Check RBAC permissions
     await this.checkPermissions(user);
-    
+
     // Add context to message
     const contextualMessage = this.addContext(message, user);
-    
+
     try {
-      // Process through the agent
-      const result = await processMessage(contextualMessage, token, history);
-      
+      // Process through the agent within a token context
+      // This makes the token available to all tools via AsyncLocalStorage
+      const result = await runWithToken(token, () =>
+        processMessage(contextualMessage, token, history)
+      );
+
       // Update conversation history
       const updatedHistory = [
         ...history,
         new HumanMessage(message),
         new AIMessage(result.response),
       ];
-      
+
       // Limit history to last 20 messages
       const trimmedHistory = updatedHistory.slice(-20);
       conversationStore.set(convId, trimmedHistory);
-      
-      // Log the interaction for KPI
+
+      // Log the interaction
       await this.logInteraction(user.userId, convId, message, result.response);
-      
+
       return {
         success: true,
         response: result.response,
@@ -73,10 +85,20 @@ export class ChatService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred';
       console.error('[ChatService] Error:', errorMessage);
-      
+
+      // Provide user-friendly error messages
+      let userMessage = 'I encountered an unexpected error. Please try again.';
+      if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+        userMessage = 'The AI service is experiencing high demand. Please wait a moment and try again.';
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
+        userMessage = 'The request took too long. Please try a simpler question or try again.';
+      } else if (errorMessage.includes('permission')) {
+        userMessage = errorMessage;
+      }
+
       return {
         success: false,
-        response: `I encountered an error: ${errorMessage}. Please try again.`,
+        response: userMessage,
         conversationId: convId,
         timestamp: new Date().toISOString(),
       };
@@ -98,6 +120,25 @@ export class ChatService {
   }
 
   /**
+   * Rate limiting per user
+   */
+  private checkRateLimit(userId: string): void {
+    const now = Date.now();
+    const record = rateLimiter.get(userId);
+
+    if (!record || now > record.resetAt) {
+      rateLimiter.set(userId, { count: 1, resetAt: now + RATE_WINDOW });
+      return;
+    }
+
+    if (record.count >= RATE_LIMIT) {
+      throw new Error('Rate limit exceeded. Please wait a moment before sending more messages.');
+    }
+
+    record.count++;
+  }
+
+  /**
    * Check RBAC permissions
    */
   private async checkPermissions(user: UserContext): Promise<void> {
@@ -106,7 +147,6 @@ export class ChatService {
       return;
     }
 
-    // Check if user's group has access to AI Chat module
     try {
       const module = await prisma.module.findFirst({
         where: { name: 'AI Chat' },
@@ -132,28 +172,27 @@ export class ChatService {
       if (error instanceof Error && error.message.includes('permission')) {
         throw error;
       }
-      // If module doesn't exist yet, allow access (will be created later)
       console.warn('[ChatService] AI Chat module not found, allowing access');
     }
   }
 
   /**
-   * Add context to the user message
+   * Add context to the user message (date, time, user info)
    */
   private addContext(message: string, user: UserContext): string {
     const now = new Date();
-    const dateStr = now.toLocaleDateString('en-US', {
+    const dateStr = now.toLocaleDateString('en-IN', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
-    const timeStr = now.toLocaleTimeString('en-US', {
+    const timeStr = now.toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
     });
 
-    return `[Context: User "${user.email}" (${user.accountType}), Current date: ${dateStr}, Time: ${timeStr}]
+    return `[Context: User "${user.email}" (${user.accountType}), Current date: ${dateStr}, Time: ${timeStr}, Today: ${now.toISOString().split('T')[0]}]
 
 User message: ${message}`;
   }
@@ -174,9 +213,7 @@ User message: ${message}`;
     userMessage: string,
     aiResponse: string
   ): Promise<void> {
-    // TODO: Implement database logging for KPI analytics
-    // For now, just log to console
-    console.log(`[ChatLog] User: ${userId}, Conv: ${conversationId}, Msg length: ${userMessage.length}, Response length: ${aiResponse.length}`);
+    console.log(`[ChatLog] User: ${userId}, Conv: ${conversationId}, Msg: ${userMessage.length}chars, Response: ${aiResponse.length}chars`);
   }
 }
 

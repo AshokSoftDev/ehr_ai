@@ -38,8 +38,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       throw new AppError('JWT_SECRET not configured', 500);
     }
 
-    // Debug: Log first/last chars of secret (don't log full secret for security)
-    console.log(`[Auth] JWT_SECRET length: ${secret.length}, starts: ${secret.substring(0, 5)}..., ends: ...${secret.substring(secret.length - 5)}`);
+
 
     const payload = jwt.verify(token, secret) as JwtPayload;
 

@@ -1,27 +1,36 @@
-// Export all tools
-import { patientTools, setAuthToken, getAuthToken } from './patient.tool';
+/**
+ * AI Tools Registry — All tools available to the LangGraph agent
+ *
+ * Architecture: All reads and writes go through the EHR API.
+ * No raw SQL, no direct database access.
+ */
+
+import { patientTools } from './patient.tool';
 import { doctorTools } from './doctor.tool';
 import { appointmentTools } from './appointment.tool';
 import { visitTools } from './visit.tool';
 import { prescriptionTools } from './prescription.tool';
-import { databaseTools } from './database.tool';
+import { billingTools } from './billing.tool';
+import { dashboardTools } from './dashboard.tool';
 
+// Combine all tools
 export const allTools = [
   ...patientTools,
   ...doctorTools,
   ...appointmentTools,
   ...visitTools,
   ...prescriptionTools,
-  ...databaseTools,
+  ...billingTools,
+  ...dashboardTools,
 ];
 
-// Re-export auth token functions
-export { setAuthToken, getAuthToken };
-
-// Re-export individual tool arrays
-export { patientTools } from './patient.tool';
-export { doctorTools } from './doctor.tool';
-export { appointmentTools } from './appointment.tool';
-export { visitTools } from './visit.tool';
-export { prescriptionTools } from './prescription.tool';
-export { databaseTools } from './database.tool';
+// Export individual tool groups for selective use
+export {
+  patientTools,
+  doctorTools,
+  appointmentTools,
+  visitTools,
+  prescriptionTools,
+  billingTools,
+  dashboardTools,
+};
