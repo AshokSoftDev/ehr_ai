@@ -128,14 +128,14 @@ class ChatCLI {
 
     try {
       const result = await processMessage(trimmed, this.token, this.conversationHistory);
-      
+
       // Clear "Thinking..." line
       process.stdout.write('\x1b[1A\x1b[2K');
-      
+
       // Update history
       this.conversationHistory.push(new HumanMessage(trimmed));
       this.conversationHistory.push(new AIMessage(result.response));
-      
+
       // Keep only last 20 messages
       if (this.conversationHistory.length > 20) {
         this.conversationHistory = this.conversationHistory.slice(-20);
